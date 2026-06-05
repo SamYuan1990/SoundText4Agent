@@ -10,7 +10,7 @@ STT and TTS service for agent
 - [ ] STT
 - Speak supports
 - [ ] wav
-- [ ] tone token for 具身智能
+- [ ] lip shape token for embodied intelligence
 
 - Deliver via
 - SDK usage
