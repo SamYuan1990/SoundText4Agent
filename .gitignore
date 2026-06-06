@@ -1,1 +1,5 @@
 __pycache__
+model
+keywords_rwa.txt
+keywords.txt
+*.wav

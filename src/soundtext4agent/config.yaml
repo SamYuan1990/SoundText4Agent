@@ -1,0 +1,6 @@
+tts:
+  num_threads: 2
+stt:
+  keywords_threshold: 0.15
+  active_timeout: 15.0
+  whisper_language: "zh"

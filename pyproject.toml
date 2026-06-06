@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.2.6",
     "onnxruntime==1.23.2",
     "pypinyin>=0.55.0",
+    "pyyaml>=6.0.3",
     "sentencepiece>=0.2.1",
     "sherpa-onnx==1.12.28",
     "sounddevice>=0.5.5",

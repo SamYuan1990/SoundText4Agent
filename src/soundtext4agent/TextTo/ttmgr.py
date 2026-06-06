@@ -12,6 +12,17 @@ Features and design goals:
 - Supports graceful start/stop of the background thread.
 - Configurable TTS engine via a dedicated `configure()` call.
 - Uses logging for info and debug level messages.
+- read config from src/soundtext4agent/config.py
+
+Missing features (not yet implemented – kept for future development):
+- Reconfiguration of the TTS engine after initial setup.
+- Dynamic language selection for TTL (currently hard‑coded to "en-us").
+- Configurable output directory for generated WAV files.
+- Reuse of the ThreadPoolExecutor across calls (currently created per text).
+- Pause/resume capability for the background thread.
+- Metric counters (Prometheus‑style) for monitoring throughput.
+- Timeout parameter for the thread join (currently fixed at 5 seconds).
+- Unit tests and integration tests.
 """
 
 import logging
@@ -50,23 +61,42 @@ class TextToManager:
         self._configured = False
 
     @classmethod
-    def configure(cls, tts_config: dict):
+    def configure(cls, tts_config: dict = None):
         """
         Initialise the TTS engine with the given configuration and obtain the TTL
         instance. Must be called before starting the manager.
 
+        If no tts_config is provided, the configuration is loaded from
+        soundtext4agent.config (the default TTS_CONFIG dictionary).
+
         Returns the singleton instance.
         """
+        # Load default config from config.py if none supplied
+        if tts_config is None:
+            try:
+                from soundtext4agent.config import TTS_CONFIG
+                tts_config = TTS_CONFIG
+                logger.info("Loaded default TTS configuration from config.py")
+            except ImportError:
+                raise RuntimeError(
+                    "Cannot load default TTS config from soundtext4agent.config. "
+                    "Ensure config.py exists and PyYAML is installed."
+                )
+
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
             inst = cls._instance
-        # It is safe to configure only once.
-        if not inst._configured:
-            inst.tts = TextToSpeech.get_instance(tts_config)
-            inst.ttl = TextToLip.instance()
-            inst._configured = True
-            logger.info("TextToManager configured successfully.")
+
+        # Only configure once; warn if attempting reconfiguration with a different config.
+        if inst._configured:
+            logger.warning("TextToManager already configured. Ignoring new configuration.")
+            return inst
+
+        inst.tts = TextToSpeech.get_instance(tts_config)
+        inst.ttl = TextToLip.instance()
+        inst._configured = True
+        logger.info("TextToManager configured successfully.")
         return inst
 
     @classmethod
@@ -113,13 +143,11 @@ class TextToManager:
                 # If the underlying call does not support interruption, consider a timeout
                 # wrapper. For now we assume dequeue_speak_text returns immediately when
                 # the stop event is set (e.g., the control plane checks a flag).
-                print("try to get msg from queue")
                 text = cp.dequeue_speak_text()
                 if text is None:
                     # A None may be used as a sentinel to stop the loop.
                     time.sleep(5)
                     continue
-                print(text)
                 logger.debug(f"Dequeued text for processing: {text[:50]}...")
                 # Process in parallel
                 wav_path, lip_events = self._process_text(text)
@@ -176,18 +204,22 @@ class TextToManager:
 # In another module (e.g., the main application):
 from soundtext4agent.TextTo.ttmgr import TextToManager
 
-# 1. Configure the manager (also initialises the underlying TTS/TTL engines)
-tts_config = {
-    "engine": "matcha",
-    "model_path": "/path/to/model.onnx",
-    "vocoder": "/path/to/vocoder.onnx",
-    "lexicon": "/path/to/lexicon.txt",
-    "tokens": "/path/to/tokens.txt",
-    "data_dir": "/path/to/espeak-ng-data",
-    "num_threads": 1,
-    "play_audio": False,   # Disable automatic playback inside the manager
-}
-manager = TextToManager.configure(tts_config)
+# 1. Configure the manager. If no argument is given, the default configuration
+#    from soundtext4agent.config is used.
+manager = TextToManager.configure()          # uses config.py defaults
+
+# Alternatively, provide an explicit configuration:
+# tts_config = {
+#     "engine": "matcha",
+#     "model_path": "/path/to/model.onnx",
+#     "vocoder": "/path/to/vocoder.onnx",
+#     "lexicon": "/path/to/lexicon.txt",
+#     "tokens": "/path/to/tokens.txt",
+#     "data_dir": "/path/to/espeak-ng-data",
+#     "num_threads": 1,
+#     "play_audio": False,   # Disable automatic playback inside the manager
+# }
+# manager = TextToManager.configure(tts_config)
 
 # 2. Start the background processing thread
 manager.start()
